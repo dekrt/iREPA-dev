@@ -210,5 +210,4 @@ class FreqAsymMSEProjectionLoss(ProjectionLoss):
 
         # 计算 MSE 损失
         loss = F.mse_loss(pred_real, target_real)
-        print("freq_asym_mse")
         return loss
