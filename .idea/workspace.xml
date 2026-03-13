@@ -5,7 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="dd5df353-5e8f-4c31-adb7-ed4da53c4114" name="更改" comment="feat: update freq_asym_mse loss">
-      <change beforePath="$PROJECT_DIR$/jit/projection_loss.py" beforeDir="false" afterPath="$PROJECT_DIR$/jit/projection_loss.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/jit/main_fft.py" beforeDir="false" afterPath="$PROJECT_DIR$/jit/main_fft.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

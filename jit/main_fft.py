@@ -443,12 +443,19 @@ def main(args):
         if args.max_train_steps is not None and global_step >= args.max_train_steps:
             print(f"Reached max_train_steps ({args.max_train_steps}). Stopping training.")
             misc.save_model(args, model_without_ddp, optimizer, epoch, epoch_name="final_step")
-            evaluate(model_without_ddp, args, (epoch + 1), batch_size=args.gen_bsz, log_writer=log_writer)
+            # evaluate(model_without_ddp, args, (epoch + 1), batch_size=args.gen_bsz, log_writer=log_writer)
             break
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time:', total_time_str)
+
+    final_epoch = epoch + 1 if 'epoch' in locals() else args.epochs + 1
+    print(f"Starting final evaluation at epoch {final_epoch}...")
+    torch.cuda.empty_cache()
+    with torch.no_grad():
+        evaluate(model_without_ddp, args, final_epoch, batch_size=args.gen_bsz, log_writer=log_writer)
+    torch.cuda.empty_cache()
 
     # Finish wandb run
     if global_rank == 0 and wandb.run is not None:
