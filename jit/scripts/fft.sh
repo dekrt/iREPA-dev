@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=6,7 \
+CUDA_VISIBLE_DEVICES=5,6 \
 torchrun --nproc_per_node=2 main_fft.py --config configs/irepa.yaml \
   --model JiT-B/16 \
   --enc_type="dinov3-vit-b16" \
