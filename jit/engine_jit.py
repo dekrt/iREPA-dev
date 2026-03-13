@@ -18,7 +18,7 @@ from torchvision.utils import make_grid
 
 def train_one_epoch(
     model, model_without_ddp, data_loader, optimizer, device, epoch, repa_kwargs,
-    log_writer=None, args=None
+    log_writer=None, args=None, global_step=0
 ):
     # REPA kwargs
     encoders = repa_kwargs.get('encoders', [])
@@ -30,6 +30,7 @@ def train_one_epoch(
     model.train(True)
     metric_logger = misc.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', misc.SmoothedValue(window_size=1, fmt='{value:.6f}'))
+    metric_logger.add_meter('global_step', misc.SmoothedValue(window_size=1, fmt='{value:.0f}'))
     header = 'Epoch: [{}]'.format(epoch)
     print_freq = 20
 
@@ -39,6 +40,10 @@ def train_one_epoch(
         print('log_dir: {}'.format(log_writer.log_dir))
 
     for data_iter_step, batch in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+        # adding max_train_steps settings
+        if args.max_train_steps is not None and global_step >= args.max_train_steps:
+            break
+        
         # per iteration (instead of per epoch) lr scheduler
         lr_sched.adjust_learning_rate(optimizer, data_iter_step / len(data_loader) + epoch, args)
 
@@ -94,6 +99,7 @@ def train_one_epoch(
         metric_logger.update(loss=loss_value)
         lr = optimizer.param_groups[0]["lr"]
         metric_logger.update(lr=lr)
+        metric_logger.update(global_step=global_step)
 
         # loss_value_reduce = misc.all_reduce_mean(loss_value)
         reduced_loss_dict = {}
@@ -117,6 +123,9 @@ def train_one_epoch(
                 for key, value in reduced_loss_dict.items():
                     wandb_logs[f'train/{key}'] = value
                 wandb.log(wandb_logs, step=epoch_1000x)
+        global_step += 1
+
+    return global_step
 
 
 def evaluate(model_without_ddp, args, epoch, batch_size=64, log_writer=None):

@@ -21,7 +21,7 @@ import util.misc as misc
 import copy
 from engine_jit import train_one_epoch, evaluate, generate_grid
 
-from denoiser import Denoiser
+from denoiser import Denoiser, FFT_Denoiser
 
 from projectors import ALL_PROJECTION_LAYER_TYPES
 from spnorm import ALL_SPNORM_METHODS
@@ -147,6 +147,9 @@ def get_args_parser():
     parser.add_argument("--projection_layer_type", type=str, default="mlp", choices=ALL_PROJECTION_LAYER_TYPES)
     parser.add_argument("--proj_kwargs_kernel_size", type=int, default=3, choices=[1, 3, 5, 7])
     parser.add_argument("--projection_loss_type", type=str, default="cosine", help="Should be a comma-separated list of projection loss types")
+
+    # fft settings
+    parser.add_argument("--freq_radius", type=int, default=4, help="Radius for low-pass filter in freq_cosine loss. Set to 4 or 8.")
 
     # whether to normalize spatial features
     parser.add_argument("--spnorm_method", type=str, default="none", choices=ALL_SPNORM_METHODS)
@@ -324,7 +327,7 @@ def main(args):
         args.z_dims = []
 
     # Create denoiser
-    model = Denoiser(args)
+    model = FFT_Denoiser(args)
 
     print("Model =", model)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -349,7 +352,7 @@ def main(args):
     print(optimizer)
 
     # Resume from checkpoint if provided
-    checkpoint_path = args.resume if args.resume else None
+    checkpoint_path = os.path.join(args.resume, "checkpoint-last.pth") if args.resume else None
     if checkpoint_path and os.path.exists(checkpoint_path):
         checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
         missing_keys, unexpected_keys = model_without_ddp.load_state_dict(checkpoint['model'], strict=False)

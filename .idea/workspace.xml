@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="dd5df353-5e8f-4c31-adb7-ed4da53c4114" name="更改" comment="">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/jit/denoiser.py" beforeDir="false" afterPath="$PROJECT_DIR$/jit/denoiser.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/jit/engine_jit.py" beforeDir="false" afterPath="$PROJECT_DIR$/jit/engine_jit.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/jit/main_jit.py" beforeDir="false" afterPath="$PROJECT_DIR$/jit/main_jit.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/jit/projection_loss.py" beforeDir="false" afterPath="$PROJECT_DIR$/jit/projection_loss.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="EmbeddingIndexingInfo">
+    <option name="cachedIndexableFilesCount" value="245" />
+    <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;dekrt&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;git@github.com:End2End-Diffusion/iREPA.git&quot;,
+    &quot;accountId&quot;: &quot;97c6b241-9346-451d-b5c0-33135b35aaf1&quot;
+  }
+}</component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 8
+}</component>
+  <component name="ProjectId" id="38q1hcRuGeBfFLisnKGslDagdnu" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "SHELLCHECK.PATH": "/Users/dekrt/Library/Application Support/JetBrains/PyCharm2026.1/plugins/Shell Script/shellcheck",
+    "codeWithMe.voiceChat.enabledByDefault": "false",
+    "git-widget-placeholder": "main",
+    "last_opened_file_path": "/Users/dekrt/Code/iREPA",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "two.files.diff.last.used.folder": "/Users/dekrt/Code/JiT",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-3bd3a6803838-JavaScript-PY-261.22158.41" />
+        <option value="bundled-python-sdk-8c3867224628-b61e75351b1f-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-261.22158.41" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="默认任务">
+      <changelist id="dd5df353-5e8f-4c31-adb7-ed4da53c4114" name="更改" comment="" />
+      <created>1769512406395</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1769512406395</updated>
+      <workItem from="1769512407505" duration="7710000" />
+      <workItem from="1770143343299" duration="18758000" />
+      <workItem from="1772522709745" duration="21755000" />
+      <workItem from="1772700391412" duration="1004000" />
+      <workItem from="1772784543528" duration="829000" />
+      <workItem from="1772912092254" duration="690000" />
+      <workItem from="1772953994777" duration="20552000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+</project>
