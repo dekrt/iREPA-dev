@@ -1,16 +1,17 @@
 # OS and editor
 *.DS_Store
 .vscode/
+.idea/
 
 # Python
 **/__pycache__/
 
 # Data and model artifacts
-data
+#data
 metrics/data/
 !dataset.py
 pretrained/
-pretrained_models
+#pretrained_models
 exps/
 exps_dbgs/
 exps_irepa_400k/
@@ -56,6 +57,8 @@ jit/README.md
 ldm/preprocessing/README.md
 ldm/evals/
 jit/evals/
-*.sh
+#*.sh
 evaluate256.py
 dinov3
+jit/wandb
+
