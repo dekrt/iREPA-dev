@@ -167,3 +167,48 @@ class FreqL2ProjectionLoss(ProjectionLoss):
         loss = F.mse_loss(zs_freq_real, zs_tilde_freq_real)
 
         return loss
+
+
+@register_loss("freq_asym_mse")
+class FreqAsymMSEProjectionLoss(ProjectionLoss):
+    def __init__(self, radius=4, **kwargs):
+        """
+        radius: 低通滤波器的截断半径。
+        直接在频域进行不对称对齐：仅对 Student 滤波，Teacher 保持全频谱，直接算 L2。
+        """
+        self.radius = radius
+
+    def __call__(self, zs, zs_tilde, zs_tilde_original=None, **kwargs):
+        self._check(zs, zs_tilde)
+
+        B, T_seq, D = zs.shape
+        H = W = int(math.isqrt(T_seq))
+
+        # 1. 转换为空间特征 [B, D, H, W]，并转为 float32 保障 FFT 精度
+        zs_spatial = zs.transpose(1, 2).reshape(B, D, H, W).to(torch.float32)
+        zs_tilde_spatial = zs_tilde.transpose(1, 2).reshape(B, D, H, W).to(torch.float32)
+
+        # 2. 变换到频域 (Real-to-Complex FFT)
+        # 注意必须使用 norm='ortho' 保证帕塞瓦尔定理成立（能量守恒）
+        zs_freq = torch.fft.rfft2(zs_spatial, norm='ortho')
+        zs_tilde_freq = torch.fft.rfft2(zs_tilde_spatial, norm='ortho')
+
+        # 3. 构造低频掩码
+        mask = torch.zeros_like(zs_tilde_freq, dtype=torch.bool)
+        r = self.radius
+        mask[:, :, :r, :r] = True  # 左上角低频
+        mask[:, :, -r:, :r] = True  # 左下角低频
+
+        # 4. 【核心不对称截断】：仅对 Student 频域特征进行硬截断，高频置零
+        # Teacher (zs_freq) 保持原样，没有任何滤波操作
+        zs_tilde_freq_low = zs_tilde_freq * mask
+
+        # 5. 【直接频域计算 Loss】：分离实部虚部，并计算 L2 (MSE)
+        # torch.view_as_real 会把复数张量在最后一维展开为大小为 2 的 [实部, 虚部]
+        pred_real = torch.view_as_real(zs_tilde_freq_low)
+        target_real = torch.view_as_real(zs_freq)
+
+        # 计算 MSE 损失
+        loss = F.mse_loss(pred_real, target_real)
+        print("freq_asym_mse")
+        return loss

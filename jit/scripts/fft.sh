@@ -7,6 +7,6 @@ torchrun --nproc_per_node=2 main_fft.py --config configs/irepa.yaml \
   --epochs 200 \
   --output_dir="/lpai/output/models/jit-dinov3-vit-b16-irepa-fft-l2" \
   --report_to tensorboard \
-  --projection_loss_type freq_l2\
+  --projection_loss_type freq_asym_mse\
   --freq_radius 4 \
 

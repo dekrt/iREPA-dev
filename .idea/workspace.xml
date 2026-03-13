@@ -4,10 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="dd5df353-5e8f-4c31-adb7-ed4da53c4114" name="更改" comment="">
+    <list default="true" id="dd5df353-5e8f-4c31-adb7-ed4da53c4114" name="更改" comment="feat: update freq-l2 loss">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/jit/main_fft.py" beforeDir="false" afterPath="$PROJECT_DIR$/jit/main_fft.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/jit/main_jit.py" beforeDir="false" afterPath="$PROJECT_DIR$/jit/main_jit.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/jit/projection_loss.py" beforeDir="false" afterPath="$PROJECT_DIR$/jit/projection_loss.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/jit/scripts/fft.sh" beforeDir="false" afterPath="$PROJECT_DIR$/jit/scripts/fft.sh" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -88,6 +87,15 @@
       <workItem from="1772912092254" duration="690000" />
       <workItem from="1772953994777" duration="20552000" />
     </task>
+    <task id="LOCAL-00001" summary="feat: update freq-l2 loss">
+      <option name="closed" value="true" />
+      <created>1773391388464</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1773391388464</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -105,6 +113,7 @@
     </option>
   </component>
   <component name="VcsManagerConfiguration">
+    <MESSAGE value="Merge remote-tracking branch 'origin/main'" />
     <MESSAGE value="feat: update freq-l2 loss" />
     <option name="LAST_COMMIT_MESSAGE" value="feat: update freq-l2 loss" />
   </component>
