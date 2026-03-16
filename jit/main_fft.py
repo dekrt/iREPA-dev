@@ -430,7 +430,7 @@ def main(args):
                 generate_grid(model_without_ddp, gt_xs, gt_ys, (epoch + 1), log_writer=log_writer)
             torch.cuda.empty_cache()
 
-        # Perform online evaluation at specified intervals
+        # Perform online evalu
         if args.online_eval and ((epoch + 1) % args.eval_freq == 0 or (epoch + 1) == args.epochs):
             torch.cuda.empty_cache()
             with torch.no_grad():

@@ -1,5 +1,6 @@
 import inspect
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from typing import Callable, Dict
 import math
@@ -45,16 +46,22 @@ def make_projection_loss(name: str, strict: bool = False, **kwargs) -> "Projecti
 # Base
 # =========================================
 
-class ProjectionLoss:
-    """All projection losses implement __call__(zs, zs_tilde, **kwargs) with tensors shaped [B, T, D]."""
+class ProjectionLoss(nn.Module):
+    """All projection losses implement forward(zs, zs_tilde, **kwargs) with tensors shaped [B, T, D]."""
+    def __init__(self):
+        super().__init__()
+
     def _check(self, zs, zs_tilde):
         if zs.ndim != 3 or zs_tilde.ndim != 3:
             raise ValueError(f"zs and zs_tilde must be [B,T,D]; got {zs.shape=} {zs_tilde.shape=}")
         if zs.shape != zs_tilde.shape:
             raise ValueError(f"Shape mismatch: {zs.shape=} vs {zs_tilde.shape=}")
 
-    def __call__(self, zs, zs_tilde, **kwargs):
+    def forward(self, zs, zs_tilde, **kwargs):
         raise NotImplementedError
+
+    def __call__(self, zs, zs_tilde, **kwargs):
+        return self.forward(zs, zs_tilde, **kwargs)
 
 # =========================================
 # Cosine
@@ -210,4 +217,79 @@ class FreqAsymMSEProjectionLoss(ProjectionLoss):
 
         # 计算 MSE 损失
         loss = F.mse_loss(pred_real, target_real)
+        return loss
+
+
+@register_loss("freq_time_gaussian_cosine")
+class FreqTimeGaussianCosineProjectionLoss(ProjectionLoss):
+    def __init__(self, **kwargs):
+        super().__init__()
+
+        # 定义一个轻量级 MLP，将时间步 t 映射为高斯滤波器的带宽参数 log(sigma)
+        self.t_mlp = nn.Sequential(
+            nn.Linear(1, 16),
+            nn.SiLU(),
+            nn.Linear(16, 1)
+        )
+
+        # 精心初始化：让 bias 初始为 -1.5，使得初始 sigma ≈ 0.22。
+        # 这是一个适中的低通滤波初始状态
+        nn.init.constant_(self.t_mlp[-1].weight, 0)
+        nn.init.constant_(self.t_mlp[-1].bias, -1.5)
+
+    def forward(self, zs, zs_tilde, zs_tilde_original=None, t=None, **kwargs):
+        self._check(zs, zs_tilde)
+        if t is None:
+            raise ValueError("Timestep 't' is required for FreqTimeGaussianCosineProjectionLoss!")
+
+        B, T_seq, D = zs.shape
+        H = W = int(math.isqrt(T_seq))
+
+        # 1. 转换为空间特征并转为 float32
+        # 注意：为了后续能够顺利算梯度的空域 Cosine，这里保留原始 dtype 用于还原
+        orig_dtype = zs.dtype
+        zs_spatial = zs.transpose(1, 2).reshape(B, D, H, W).to(torch.float32)
+        zs_tilde_spatial = zs_tilde.transpose(1, 2).reshape(B, D, H, W).to(torch.float32)
+
+        # 2. 正交傅里叶变换到频域
+        zs_freq = torch.fft.rfft2(zs_spatial, norm='ortho')
+        zs_tilde_freq = torch.fft.rfft2(zs_tilde_spatial, norm='ortho')
+
+        # 3. 计算频域坐标网格 (物理上的频率距离的平方 D^2)
+        freq_y = torch.fft.fftfreq(H, device=zs.device)
+        freq_x = torch.fft.rfftfreq(W, device=zs.device)
+        grid_y, grid_x = torch.meshgrid(freq_y, freq_x, indexing='ij')
+        D_sq = (grid_y ** 2 + grid_x ** 2).view(1, 1, H, -1)  # 形状: [1, 1, H, W/2+1]
+
+        # 4. 通过 MLP 动态计算当前时间步 t 的带宽 sigma
+        if t.ndim == 1:
+            t_input = t.unsqueeze(1).to(torch.float32)
+        else:
+            t_input = t.flatten(1).mean(dim=1, keepdim=True).to(torch.float32)
+
+        log_sigma = self.t_mlp(t_input)  # 形状: [B, 1]
+        sigma_sq = torch.exp(log_sigma).view(B, 1, 1, 1) + 1e-4
+
+        # 5. 构造可学习的高斯柔性掩码 (Gaussian Soft Mask)
+        soft_mask = torch.exp(- D_sq / (2 * sigma_sq))  # 形状: [B, 1, H, W/2+1]
+
+        # 6. 【核心对称滤波】：对 Teacher 和 Student 施加相同的平滑频域滤波
+        zs_freq_filtered = zs_freq * soft_mask
+        zs_tilde_freq_filtered = zs_tilde_freq * soft_mask
+
+        # 7. 逆变换回空域 (因为是高斯掩码，绝对不会产生振铃效应！)
+        zs_spatial_filtered = torch.fft.irfft2(zs_freq_filtered, s=(H, W), norm='ortho')
+        zs_tilde_spatial_filtered = torch.fft.irfft2(zs_tilde_freq_filtered, s=(H, W), norm='ortho')
+
+        # 8. 还原为原始维度和数据类型 [B, T, D]
+        zs_low = zs_spatial_filtered.to(orig_dtype).flatten(2).transpose(1, 2)
+        zs_tilde_low = zs_tilde_spatial_filtered.to(orig_dtype).flatten(2).transpose(1, 2)
+
+        # 9. 纯正的空域 Cosine Similarity (流形完美匹配)
+        zs_low = F.normalize(zs_low, dim=-1)
+        zs_tilde_low = F.normalize(zs_tilde_low, dim=-1)
+
+        cos_sim = (zs_low * zs_tilde_low).sum(dim=-1)
+        loss = -cos_sim.mean()
+
         return loss

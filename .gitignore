@@ -1,7 +1,7 @@
 # OS and editor
 *.DS_Store
 .vscode/
-.idea/
+.idea/*
 
 # Python
 **/__pycache__/

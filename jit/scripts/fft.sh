@@ -5,8 +5,6 @@ torchrun --nproc_per_node=2 main_fft.py --config configs/irepa.yaml \
   --encoder_depth=4 \
   --data_path=../data \
   --epochs 200 \
-  --output_dir="/lpai/output/models/jit-dinov3-vit-b16-irepa-fft-l2" \
+  --output_dir="/lpai/output/models/jit-dinov3-vit-b16-irepa-freq_time_gaussian_mse" \
   --report_to tensorboard \
-  --projection_loss_type freq_asym_mse\
-  --freq_radius 4 \
-
+  --projection_loss_type freq_time_gaussian_mse
