@@ -51,10 +51,10 @@ class Denoiser(nn.Module):
 
         # create projection loss
         self.projection_loss_kwargs = {}
-        self.projection_loss = nn.ModuleList([
+        self.projection_loss = [
             pl.make_projection_loss(projection_loss_type, **self.projection_loss_kwargs)
             for projection_loss_type in self.projection_loss_type
-        ])
+        ]
         assert len(self.projection_loss) == len(self.proj_coeff), \
             f"len(self.projection_loss) - {len(self.projection_loss)} != len(self.proj_coeff) - {len(self.proj_coeff)}"
 
@@ -99,7 +99,7 @@ class Denoiser(nn.Module):
                         # zs_tilde_original will be only used for gram-matrix loss, so its shape doesn't matter
                         assert z.shape == z_tilde.shape, f"Shape mismatch: {z.shape=} vs {z_tilde.shape=}"
                         # NOTE: We pass vision_feats, projected_sit_feats, and unprojected_sit_feats, but the last one might not be used
-                        proj_loss = proj_loss + proj_loss_fn(z, z_tilde, zs_tilde_original=z_tilde_original, t=t)
+                        proj_loss = proj_loss + proj_loss_fn(z, z_tilde, z_tilde_original=z_tilde_original)
                     proj_loss /= len(zs)
                 loss_dict[proj_loss_name] = proj_loss.detach().item()
                 loss_dict[f"{proj_loss_name}_weighted"] = proj_loss.detach().item() * coeff
@@ -266,10 +266,10 @@ class FFT_Denoiser(nn.Module):
         self.projection_loss_kwargs = {
             'radius': getattr(args, 'freq_radius', 4)  # 默认半径为4
         }
-        self.projection_loss = [
+        self.projection_loss = nn.ModuleList([
             pl.make_projection_loss(projection_loss_type, **self.projection_loss_kwargs)
             for projection_loss_type in self.projection_loss_type
-        ]
+        ])
         assert len(self.projection_loss) == len(self.proj_coeff), \
             f"len(self.projection_loss) - {len(self.projection_loss)} != len(self.proj_coeff) - {len(self.proj_coeff)}"
 
@@ -314,7 +314,7 @@ class FFT_Denoiser(nn.Module):
                         # zs_tilde_original will be only used for gram-matrix loss, so its shape doesn't matter
                         assert z.shape == z_tilde.shape, f"Shape mismatch: {z.shape=} vs {z_tilde.shape=}"
                         # NOTE: We pass vision_feats, projected_sit_feats, and unprojected_sit_feats, but the last one might not be used
-                        proj_loss = proj_loss + proj_loss_fn(z, z_tilde, z_tilde_original)
+                        proj_loss = proj_loss + proj_loss_fn(z, z_tilde, zs_tilde_original=z_tilde_original, t=t)
                     proj_loss /= len(zs)
                 loss_dict[proj_loss_name] = proj_loss.detach().item()
                 loss_dict[f"{proj_loss_name}_weighted"] = proj_loss.detach().item() * coeff
