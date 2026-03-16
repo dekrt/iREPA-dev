@@ -430,7 +430,7 @@ def main(args):
                 generate_grid(model_without_ddp, gt_xs, gt_ys, (epoch + 1), log_writer=log_writer)
             torch.cuda.empty_cache()
 
-        # Perform online evalu
+        # Perform online eval
         if args.online_eval and ((epoch + 1) % args.eval_freq == 0 or (epoch + 1) == args.epochs):
             torch.cuda.empty_cache()
             with torch.no_grad():
@@ -450,12 +450,12 @@ def main(args):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time:', total_time_str)
 
-    final_epoch = epoch + 1 if 'epoch' in locals() else args.epochs + 1
-    print(f"Starting final evaluation at epoch {final_epoch}...")
-    torch.cuda.empty_cache()
-    with torch.no_grad():
-        evaluate(model_without_ddp, args, final_epoch, batch_size=args.gen_bsz, log_writer=log_writer)
-    torch.cuda.empty_cache()
+    # final_epoch = epoch + 1 if 'epoch' in locals() else args.epochs + 1
+    # print(f"Starting final evaluation at epoch {final_epoch}...")
+    # torch.cuda.empty_cache()
+    # with torch.no_grad():
+    #     evaluate(model_without_ddp, args, final_epoch, batch_size=args.gen_bsz, log_writer=log_writer)
+    # torch.cuda.empty_cache()
 
     # Finish wandb run
     if global_rank == 0 and wandb.run is not None:
