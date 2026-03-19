@@ -293,3 +293,36 @@ class FreqTimeGaussianCosineProjectionLoss(ProjectionLoss):
         loss = -cos_sim.mean()
 
         return loss
+
+
+@register_loss("patch_nce")
+class PatchNCEProjectionLoss(ProjectionLoss):
+    def __init__(self, temperature=0.07, **kwargs):
+        super().__init__()
+        # 典型的对比学习温度系数，0.07 是经典默认值
+        self.temperature = temperature
+
+    def forward(self, zs, zs_tilde, zs_tilde_original=None, **kwargs):
+        self._check(zs, zs_tilde)
+
+        # 1. L2 归一化 (匹配 DINO 原始流形)
+        zs = F.normalize(zs, dim=-1)
+        zs_tilde = F.normalize(zs_tilde, dim=-1)
+
+        # 2. 计算点积相似度矩阵: [B, T, T]
+        # sim[b, i, j] 代表 Student 的第 i 个 Patch 和 Teacher 的第 j 个 Patch 的相似度
+        sim = torch.bmm(zs_tilde, zs.transpose(1, 2)) / self.temperature
+
+        B, T_seq, _ = zs.shape
+
+        # 3. 构造标签：正样本是对角线 (i == j)
+        labels = torch.arange(T_seq, device=zs.device).unsqueeze(0).expand(B, -1)  # [B, T]
+
+        # 4. 展平并计算交叉熵
+        # CrossEntropy 会自动拉近 i==j 的特征，同时强烈排斥 i!=j 的特征
+        sim = sim.view(B * T_seq, T_seq)
+        labels = labels.flatten()
+
+        loss = F.cross_entropy(sim, labels)
+
+        return loss

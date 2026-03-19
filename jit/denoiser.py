@@ -103,17 +103,9 @@ class Denoiser(nn.Module):
                         proj_loss = proj_loss + proj_loss_fn(z, z_tilde, z_tilde_original=z_tilde_original)
                     proj_loss /= len(zs)
 
-                # ==================== T-REPA 时序感知衰减 ====================
-                # t 的范围是 0 (纯噪声) 到 1 (清晰图像)
-                # 使用 cos(pi/2 * t) 可以让权重在 t=0 时为 1，在 t=1 时平滑衰减到 0
-                t_norm = t if t.dtype.is_floating_point else t.float() / 1000.0
-                temporal_weight = torch.cos(math.pi / 2 * t_norm).mean()
-                # 动态计算当前的系数
-                dynamic_coeff = coeff * temporal_weight
-                # ==========================================================
                 loss_dict[proj_loss_name] = proj_loss.detach().item()
-                loss_dict[f"{proj_loss_name}_weighted"] = proj_loss.detach().item() * dynamic_coeff.item()
-                total_proj_loss = total_proj_loss + dynamic_coeff * proj_loss
+                loss_dict[f"{proj_loss_name}_weighted"] = proj_loss.detach().item() * coeff.item()
+                total_proj_loss = total_proj_loss + coeff * proj_loss
 
             loss_dict['denoise_loss'] = loss.detach().item()
             loss_dict['total_proj_loss'] = total_proj_loss.detach().item()
