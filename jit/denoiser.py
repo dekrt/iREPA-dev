@@ -104,7 +104,7 @@ class Denoiser(nn.Module):
                     proj_loss /= len(zs)
 
                 loss_dict[proj_loss_name] = proj_loss.detach().item()
-                loss_dict[f"{proj_loss_name}_weighted"] = proj_loss.detach().item() * coeff.item()
+                loss_dict[f"{proj_loss_name}_weighted"] = proj_loss.detach().item() * coeff
                 total_proj_loss = total_proj_loss + coeff * proj_loss
 
             loss_dict['denoise_loss'] = loss.detach().item()
