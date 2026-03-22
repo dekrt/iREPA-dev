@@ -1,7 +1,7 @@
 mkdir -p /root/.cache/torch/hub/checkpoints/
 cp /lpai/volumes/so-volume-bd-ga/lhp/pt_inception-2015-12-05-6726825d.pth /root/.cache/torch/hub/checkpoints/weights-inception-2015-12-05-6726825d.pth
 
-CUDA_VISIBLE_DEVICES=6,7 \
+CUDA_VISIBLE_DEVICES=4,5 \
 torchrun --nproc_per_node=2 main_jit.py --config configs/repa.yaml \
   --model JiT-B/16 \
   --enc_type="dinov3-vit-b16" \
