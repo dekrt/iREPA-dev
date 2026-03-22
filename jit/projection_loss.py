@@ -326,3 +326,152 @@ class PatchNCEProjectionLoss(ProjectionLoss):
         loss = F.cross_entropy(sim, labels)
 
         return loss
+
+
+@register_loss("semantic_nce")
+class SemanticAwareNCE(ProjectionLoss):
+    def __init__(self, temperature=0.07, pos_threshold=0.7, **kwargs):
+        super().__init__()
+        self.temperature = temperature
+        # 语义阈值：如果 Teacher 认为两个 Patch 相似度大于 0.7，就不把它们当负样本推开
+        self.pos_threshold = pos_threshold
+
+    def forward(self, zs, zs_tilde, zs_tilde_original=None, **kwargs):
+        self._check(zs, zs_tilde)
+
+        # 1. L2 归一化
+        zs = F.normalize(zs, dim=-1)
+        zs_tilde = F.normalize(zs_tilde, dim=-1)
+
+        B, T_seq, _ = zs.shape
+
+        # =======================================================
+        # 2. Teacher 裁判阶段 (不产生梯度)
+        # =======================================================
+        with torch.no_grad():
+            # 计算 Teacher 自己的 Patch 两两相似度 [B, T, T]
+            t_sim = torch.bmm(zs, zs.transpose(1, 2))
+
+            # 找出 "假负样本"：Teacher 认为相似度很高的地方 (>0.7)
+            false_neg_mask = t_sim > self.pos_threshold
+
+            # 对角线 (i==j) 是真正的正样本，不能被屏蔽
+            diag_mask = torch.eye(T_seq, device=zs.device, dtype=torch.bool).unsqueeze(0)
+
+            # 我们需要屏蔽的，是那些 "既不在对角线上，又高度相似" 的坑人样本
+            mask_to_ignore = false_neg_mask & (~diag_mask)
+
+        # =======================================================
+        # 3. Student 对齐阶段
+        # =======================================================
+        # 计算 Student 和 Teacher 的相似度矩阵
+        sim = torch.bmm(zs_tilde, zs.transpose(1, 2)) / self.temperature
+
+        # 核心：把假负样本的 Logit 设为极小值（-1e4），这样 CrossEntropy 就会无视它们，不产生排斥梯度！
+        sim.masked_fill_(mask_to_ignore, -1e4)
+
+        # 4. 计算对比损失
+        labels = torch.arange(T_seq, device=zs.device).unsqueeze(0).expand(B, -1)
+        loss = F.cross_entropy(sim.view(B * T_seq, T_seq), labels.flatten())
+
+        return loss
+
+
+@register_loss("smooth_freq_cosine")
+class SmoothFreqCosineProjectionLoss(ProjectionLoss):
+    def __init__(self, sigma=4.0, **kwargs):
+        """
+        sigma: 高斯低通滤波器的标准差（带宽）。
+        值越大，保留的高频越多；值越小，图像越平滑。
+        """
+        super().__init__()
+        self.sigma = sigma
+
+    def forward(self, zs, zs_tilde, zs_tilde_original=None, **kwargs):
+        self._check(zs, zs_tilde)
+
+        def gaussian_low_pass_filter(feats):
+            B, T_seq, D = feats.shape
+            H = W = int(math.isqrt(T_seq))
+
+            # 1. 转为空间特征
+            orig_dtype = feats.dtype
+            x_spatial = feats.transpose(1, 2).reshape(B, D, H, W).to(torch.float32)
+
+            # 2. 正交 FFT
+            x_freq = torch.fft.rfft2(x_spatial, norm='ortho')
+
+            # 3. 构造高斯柔性掩码 (Gaussian Soft Mask)
+            freq_y = torch.fft.fftfreq(H, device=feats.device)
+            freq_x = torch.fft.rfftfreq(W, device=feats.device)
+            grid_y, grid_x = torch.meshgrid(freq_y, freq_x, indexing='ij')
+
+            # 计算频率距离平方
+            D_sq = (grid_y ** 2 + grid_x ** 2).view(1, 1, H, -1)
+
+            # 高斯衰减函数 (平滑压制高频，而非暴力截断)
+            soft_mask = torch.exp(- D_sq / (2 * (self.sigma / H) ** 2))
+
+            # 4. 频域滤波
+            x_freq_smooth = x_freq * soft_mask
+
+            # 5. 逆变换回空域 (无振铃效应)
+            x_spatial_smooth = torch.fft.irfft2(x_freq_smooth, s=(H, W), norm='ortho')
+
+            return x_spatial_smooth.to(orig_dtype).flatten(2).transpose(1, 2)
+
+        # 提取平滑后的低频语义
+        zs_smooth = gaussian_low_pass_filter(zs)
+        zs_tilde_smooth = gaussian_low_pass_filter(zs_tilde)
+
+        # 空域 Cosine 相似度 (流形匹配)
+        zs_smooth = F.normalize(zs_smooth, dim=-1)
+        zs_tilde_smooth = F.normalize(zs_tilde_smooth, dim=-1)
+
+        cos_sim = (zs_smooth * zs_tilde_smooth).sum(dim=-1)
+        loss = -cos_sim.mean()
+
+        return loss
+
+
+@register_loss("freq_direct_cosine")
+class FreqDirectCosineProjectionLoss(ProjectionLoss):
+    def __init__(self, **kwargs):
+        """
+        直接在频域展开复数，算频率向量的角度对齐 (Cosine)。
+        """
+        super().__init__()
+
+    def forward(self, zs, zs_tilde, zs_tilde_original=None, **kwargs):
+        self._check(zs, zs_tilde)
+
+        B, T_seq, D = zs.shape
+        H = W = int(math.isqrt(T_seq))
+
+        # 1. 转换为空间特征
+        zs_spatial = zs.transpose(1, 2).reshape(B, D, H, W).to(torch.float32)
+        zs_tilde_spatial = zs_tilde.transpose(1, 2).reshape(B, D, H, W).to(torch.float32)
+
+        # 2. 正交 FFT 到频域
+        zs_freq = torch.fft.rfft2(zs_spatial, norm='ortho')
+        zs_tilde_freq = torch.fft.rfft2(zs_tilde_spatial, norm='ortho')
+
+        # 3. 将复数拆分为 [实部, 虚部] 的实数张量
+        # shape: [B, D, H, W/2+1, 2]
+        zs_freq_real = torch.view_as_real(zs_freq)
+        zs_tilde_freq_real = torch.view_as_real(zs_tilde_freq)
+
+        # 4. 展平为频谱向量
+        # 我们按通道(D)进行展开，比较每个 Patch 的局部频谱分布
+        zs_freq_flat = zs_freq_real.flatten(2)  # [B, D, H * (W/2+1) * 2]
+        zs_tilde_freq_flat = zs_tilde_freq_real.flatten(2)  # [B, D, H * (W/2+1) * 2]
+
+        # 5. 频域 L2 归一化 (让高频和低频的能量分布具有一致的角度)
+        zs_freq_norm = F.normalize(zs_freq_flat, dim=-1)
+        zs_tilde_freq_norm = F.normalize(zs_tilde_freq_flat, dim=-1)
+
+        # 6. 计算频谱角度相似度
+        cos_sim = (zs_freq_norm * zs_tilde_freq_norm).sum(dim=-1)
+        loss = -cos_sim.mean()
+
+        return loss
