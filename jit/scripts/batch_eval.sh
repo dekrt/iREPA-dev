@@ -17,17 +17,23 @@ LOG_FILE="/lpai/output/models/eval_results_all.txt"
 > $LOG_FILE
 
 for MODEL_NAME in "${MODELS[@]}"; do
-    BASE_CKPT_DIR="/lpai/models/repa/${MODEL_NAME}/${MODEL_NAME}"
+    BASE_CKPT_DIR="/lpai/input/models/repa/${MODEL_NAME}/${MODEL_NAME}"
     OUTPUT_DIR="/lpai/output/models/${MODEL_NAME}_eval"
 
     echo "Evaluating: ${MODEL_NAME}" | tee -a $LOG_FILE
 
-    for CKPT_PATH in $(ls -v $BASE_CKPT_DIR/checkpoint-*.pth); do
-        CKPT_NAME=$(basename $CKPT_PATH)
+    for STEP in {20..200..20}; do
+        CKPT_NAME="checkpoint-${STEP}.pth"
+        CKPT_PATH="${BASE_CKPT_DIR}/${CKPT_NAME}"
+
+        if [ ! -f "$CKPT_PATH" ]; then
+            echo "[警告] 文件未找到: $CKPT_PATH, 跳过..." | tee -a $LOG_FILE
+            continue
+        fi
 
         echo "-> ${CKPT_NAME}" | tee -a $LOG_FILE
-        CUDA_VISIBLE_DEVICES=2 \
-        torchrun --nproc_per_node=1 --nnodes=1 --node_rank=0 \
+
+        torchrun --nproc_per_node=8 --nnodes=1 --node_rank=0 \
             --master_port 29600 \
             main_jit.py \
             --model JiT-B/16 \
@@ -39,3 +45,5 @@ for MODEL_NAME in "${MODELS[@]}"; do
             --evaluate_gen 2>&1 | tee -a $LOG_FILE
     done
 done
+
+sleep 1d;
