@@ -8,6 +8,7 @@ from pathlib import Path
 
 import torch
 import torch.backends.cudnn as cudnn
+import torch.distributed as dist
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.datasets import ImageFolder
 import torchvision.transforms as transforms
@@ -394,12 +395,36 @@ def main(args):
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
     global_step = args.start_epoch * len(data_loader_train)
+    steps_threshold = 100000
+    last_saved_step = (global_step // steps_threshold) * steps_threshold
+
+    final_step_by_epochs = args.epochs * len(data_loader_train)
+    final_step_estimate = final_step_by_epochs
+    if args.max_train_steps is not None:
+        final_step_estimate = min(final_step_estimate, args.max_train_steps)
+    est_100k_saves = max(0, (final_step_estimate // steps_threshold) - (global_step // steps_threshold))
+    print(f"Estimated 100K-step checkpoints to save: {est_100k_saves}")
 
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
 
         global_step = train_one_epoch(model, model_without_ddp, data_loader_train, optimizer, device, epoch, repa_kwargs, log_writer=log_writer, args=args, global_step=global_step)
+
+        # Save model every 100K steps, including all crossed milestones.
+        current_milestone = (global_step // steps_threshold) * steps_threshold
+        next_milestone = last_saved_step + steps_threshold
+        while next_milestone <= current_milestone:
+            misc.save_model(
+                args=args,
+                model_without_ddp=model_without_ddp,
+                optimizer=optimizer,
+                epoch=(epoch + 1),
+                epoch_name=f"step_{next_milestone}"
+            )
+            last_saved_step = next_milestone
+            print(f"Saved checkpoint at {next_milestone} steps")
+            next_milestone += steps_threshold
 
         # Save final checkpoint periodically for easier resuming
         if (epoch + 1) % args.save_last_freq == 0 or (epoch + 1) == args.epochs:
@@ -437,10 +462,20 @@ def main(args):
         if misc.is_main_process() and log_writer is not None:
             log_writer.flush()
 
-        if args.max_train_steps is not None and global_step >= args.max_train_steps:
+        # Check if we've reached max_train_steps
+        should_stop = args.max_train_steps is not None and global_step >= args.max_train_steps
+        
+        # Synchronize stop decision across all processes in distributed training
+        if args.distributed:
+            should_stop_tensor = torch.tensor(should_stop, dtype=torch.long, device=device)
+            dist.all_reduce(should_stop_tensor, op=dist.ReduceOp.MAX)
+            should_stop = bool(should_stop_tensor.item())
+        
+        if should_stop:
             print(f"Reached max_train_steps ({args.max_train_steps}). Stopping training.")
             misc.save_model(args, model_without_ddp, optimizer, epoch, epoch_name="final_step")
-            evaluate(model_without_ddp, args, (epoch + 1), batch_size=args.gen_bsz, log_writer=log_writer)
+            if args.online_eval:
+                evaluate(model_without_ddp, args, (epoch + 1), batch_size=args.gen_bsz, log_writer=log_writer)
             break
 
     total_time = time.time() - start_time

@@ -40,10 +40,6 @@ def train_one_epoch(
         print('log_dir: {}'.format(log_writer.log_dir))
 
     for data_iter_step, batch in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
-        # adding max_train_steps settings
-        if args.max_train_steps is not None and global_step >= args.max_train_steps:
-            break
-        
         # per iteration (instead of per epoch) lr scheduler
         lr_sched.adjust_learning_rate(optimizer, data_iter_step / len(data_loader) + epoch, args)
 
@@ -124,6 +120,10 @@ def train_one_epoch(
                     wandb_logs[f'train/{key}'] = value
                 wandb.log(wandb_logs, step=epoch_1000x)
         global_step += 1
+        
+        # Check max_train_steps after incrementing global_step
+        if args.max_train_steps is not None and global_step >= args.max_train_steps:
+            break
 
     return global_step
 

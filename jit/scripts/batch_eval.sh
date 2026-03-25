@@ -32,8 +32,8 @@ for MODEL_NAME in "${MODELS[@]}"; do
         fi
 
         echo "-> ${CKPT_NAME}" | tee -a $LOG_FILE
-
-        torchrun --nproc_per_node=8 --nnodes=1 --node_rank=0 \
+        CUDA_VISIBLE_DEVICES=4,5 \
+        torchrun --nproc_per_node=2 --nnodes=1 --node_rank=0 \
             --master_port 29600 \
             main_jit.py \
             --model JiT-B/16 \
