@@ -20,6 +20,7 @@ torchrun --nproc_per_node=2 main_jit.py --config configs/irepa.yaml \
   --epochs 200 \
   --output_dir="/lpai/output/models/jit-dinov3-vit-b16-irepa-semantic-nce" \
   --report_to tensorboard \
-  --projection_loss_type semantic_nce
+  --projection_loss_type semantic_nce \
+  --batch_size 2
 
 sleep 1d
