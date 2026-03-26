@@ -395,7 +395,8 @@ def main(args):
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
     global_step = args.start_epoch * len(data_loader_train)
-    steps_threshold = 100000
+    # steps_threshold = 100000
+    steps_threshold = 100
     last_saved_step = (global_step // steps_threshold) * steps_threshold
 
     final_step_by_epochs = args.epochs * len(data_loader_train)
