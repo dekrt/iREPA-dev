@@ -120,6 +120,17 @@ def train_one_epoch(
                     wandb_logs[f'train/{key}'] = value
                 wandb.log(wandb_logs, step=epoch_1000x)
         global_step += 1
+
+        # Step-based checkpointing: save immediately when milestone is hit.
+        if args.save_steps is not None and args.save_steps > 0 and global_step % args.save_steps == 0:
+            misc.save_model(
+                args=args,
+                model_without_ddp=model_without_ddp,
+                optimizer=optimizer,
+                epoch=(epoch + 1),
+                epoch_name=f"step_{global_step}"
+            )
+            print(f"Saved checkpoint at step {global_step}")
         
         # Check max_train_steps after incrementing global_step
         if args.max_train_steps is not None and global_step >= args.max_train_steps:

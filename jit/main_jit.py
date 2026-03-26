@@ -123,6 +123,8 @@ def get_args_parser():
                         help='Folder that contains checkpoint to resume from')
     parser.add_argument('--save_last_freq', type=int, default=5,
                         help='Frequency (in epochs) to save checkpoints')
+    parser.add_argument('--save_steps', type=int, default=100000,
+                        help='Frequency (in steps) to save step checkpoints')
     parser.add_argument('--log_freq', default=100, type=int)
 
     # Auto-requeue for SLURM (h2gpu partition doesn't support --signal)
@@ -395,16 +397,14 @@ def main(args):
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
     global_step = args.start_epoch * len(data_loader_train)
-    # steps_threshold = 100000
-    steps_threshold = 100
-    last_saved_step = (global_step // steps_threshold) * steps_threshold
+    steps_threshold = args.save_steps
 
     final_step_by_epochs = args.epochs * len(data_loader_train)
     final_step_estimate = final_step_by_epochs
     if args.max_train_steps is not None:
         final_step_estimate = min(final_step_estimate, args.max_train_steps)
-    est_100k_saves = max(0, (final_step_estimate // steps_threshold) - (global_step // steps_threshold))
-    print(f"Estimated 100K-step checkpoints to save: {est_100k_saves}")
+    est_step_saves = max(0, (final_step_estimate // steps_threshold) - (global_step // steps_threshold))
+    print(f"Estimated step checkpoints to save (every {steps_threshold} steps): {est_step_saves}")
 
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
@@ -412,20 +412,6 @@ def main(args):
 
         global_step = train_one_epoch(model, model_without_ddp, data_loader_train, optimizer, device, epoch, repa_kwargs, log_writer=log_writer, args=args, global_step=global_step)
 
-        # Save model every 100K steps, including all crossed milestones.
-        current_milestone = (global_step // steps_threshold) * steps_threshold
-        next_milestone = last_saved_step + steps_threshold
-        while next_milestone <= current_milestone:
-            misc.save_model(
-                args=args,
-                model_without_ddp=model_without_ddp,
-                optimizer=optimizer,
-                epoch=(epoch + 1),
-                epoch_name=f"step_{next_milestone}"
-            )
-            last_saved_step = next_milestone
-            print(f"Saved checkpoint at {next_milestone} steps")
-            next_milestone += steps_threshold
 
         # Save final checkpoint periodically for easier resuming
         if (epoch + 1) % args.save_last_freq == 0 or (epoch + 1) == args.epochs:
