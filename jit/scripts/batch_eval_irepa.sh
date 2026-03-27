@@ -13,7 +13,8 @@ MODELS=(
 )
 
 LOG_FILE="/lpai/output/models/irepa_eval/eval_results_all.txt"
-> $LOG_FILE
+mkdir -p "$(dirname "$LOG_FILE")"
+> "$LOG_FILE"
 
 for MODEL_NAME in "${MODELS[@]}"; do
     BASE_CKPT_DIR="/lpai/models/repa/jit-dinov3-vit-b16-irepa/jit-dinov3-vit-b16-irepa"
