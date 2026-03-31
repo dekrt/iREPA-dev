@@ -14,10 +14,11 @@ MODELS=(
 )
 
 LOG_FILE="/lpai/output/models/jit_irepa_wo_spnorm/eval_results_all.txt"
+mkdir -p "$(dirname "$LOG_FILE")"
 > $LOG_FILE
 
 for MODEL_NAME in "${MODELS[@]}"; do
-    BASE_CKPT_DIR="/lpai/input/models/repa/${MODEL_NAME}/${MODEL_NAME}"
+    BASE_CKPT_DIR="/lpai/models/repa/${MODEL_NAME}/${MODEL_NAME}"
     OUTPUT_DIR="/lpai/output/models/${MODEL_NAME}_eval"
 
     echo "Evaluating: ${MODEL_NAME}" | tee -a $LOG_FILE
