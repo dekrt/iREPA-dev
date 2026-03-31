@@ -9,10 +9,10 @@ mkdir -p /root/.cache/torch/hub/checkpoints/
 cp /lpai/volumes/so-volume-bd-ga/lhp/pt_inception-2015-12-05-6726825d.pth /root/.cache/torch/hub/checkpoints/weights-inception-2015-12-05-6726825d.pth
 
 MODELS=(
-    "jit-dinov3-vit-b16-irepa"
+    "jit-dinov3-vit-b16-irepa-semantic-nce"
 )
 
-LOG_FILE="/lpai/output/models/irepa_eval/eval_results_all.txt"
+LOG_FILE="/lpai/output/models/irepa-semantic-nce-eval/eval_results_all.txt"
 mkdir -p "$(dirname "$LOG_FILE")"
 > "$LOG_FILE"
 
@@ -22,7 +22,7 @@ for MODEL_NAME in "${MODELS[@]}"; do
 
     echo "Evaluating: ${MODEL_NAME}" | tee -a $LOG_FILE
 
-    for STEP in 20 120 140 160 180; do
+    for STEP in 40 60 80; do
         CKPT_NAME="checkpoint-${STEP}.pth"
         CKPT_PATH="${BASE_CKPT_DIR}/${CKPT_NAME}"
 
@@ -32,9 +32,9 @@ for MODEL_NAME in "${MODELS[@]}"; do
         fi
 
         echo "-> ${CKPT_NAME}" | tee -a $LOG_FILE
-        CUDA_VISIBLE_DEVICES=2,3,4,6 \
-        torchrun --nproc_per_node=4 --nnodes=1 --node_rank=0 \
-            --master_port 29600 \
+#        CUDA_VISIBLE_DEVICES=2,3,4,6 \
+        torchrun --nproc_per_node=8 --nnodes=1 --node_rank=0 \
+            --master_port 29500 \
             main_jit.py \
             --model JiT-B/16 \
             --img_size 256 --noise_scale 1.0 \
