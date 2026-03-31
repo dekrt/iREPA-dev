@@ -1,5 +1,5 @@
 OUTPUT_DIR="/lpai/output/models/iREPA/eval/JiT_repa-semantic-nce-wo-spnorm"
-CKPT_DIR="/lpai/models/repa/jit-dinov3-vit-b16-irepa-cosine-wo-spnorm/jit-dinov3-vit-b16-irepa-cosine-wo-spnorm/checkpoint-100.pth"
+CKPT_DIR="/lpai/models/repa/jit-dinov3-vit-b16-irepa-semantic-nce-wo-spnorm/jit-dinov3-vit-b16-irepa-semantic-nce-wo-spnorm/checkpoint-100.pth"
 
 mkdir -p /root/.cache/torch/hub/checkpoints/
 cp /lpai/volumes/so-volume-bd-ga/lhp/pt_inception-2015-12-05-6726825d.pth /root/.cache/torch/hub/checkpoints/weights-inception-2015-12-05-6726825d.pth
