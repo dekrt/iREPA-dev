@@ -1,4 +1,5 @@
 #!/bin/bash
+# Script: batch_eval_irepa.sh - Evaluate iREPA model checkpoints
 
 source /root/anaconda3/etc/profile.d/conda.sh
 conda activate dit
@@ -17,7 +18,7 @@ mkdir -p "$(dirname "$LOG_FILE")"
 > "$LOG_FILE"
 
 for MODEL_NAME in "${MODELS[@]}"; do
-    BASE_CKPT_DIR="/lpai/models/repa/jit-dinov3-vit-b16-irepa/jit-dinov3-vit-b16-irepa"
+    BASE_CKPT_DIR="/lpai/models/repa/${MODEL_NAME}/${MODEL_NAME}"
     OUTPUT_DIR="/lpai/output/models/${MODEL_NAME}_eval"
 
     echo "Evaluating: ${MODEL_NAME}" | tee -a $LOG_FILE
@@ -45,6 +46,3 @@ for MODEL_NAME in "${MODELS[@]}"; do
             --evaluate_gen 2>&1 | tee -a $LOG_FILE
     done
 done
-
-sleep 1d;
-
