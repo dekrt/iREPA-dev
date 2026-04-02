@@ -376,6 +376,32 @@ class SemanticAwareNCE(ProjectionLoss):
 
         return loss
 
+@register_loss("vanilla_nce")
+class VanillaNCE(ProjectionLoss):
+    def __init__(self, temperature=0.07, **kwargs):
+        super().__init__()
+        self.temperature = temperature
+
+    def forward(self, zs, zs_tilde, zs_tilde_original=None, **kwargs):
+        self._check(zs, zs_tilde)
+
+        # 1. 纯净的 L2 归一化 (匹配 DINO 流形)
+        zs = F.normalize(zs, dim=-1)
+        zs_tilde = F.normalize(zs_tilde, dim=-1)
+
+        B, T_seq, _ = zs.shape
+
+        # 2. 计算相似度矩阵 (没有任何 Teacher 裁判的干预！)
+        sim = torch.bmm(zs_tilde, zs.transpose(1, 2)) / self.temperature
+
+        # 3. 构造对角线标签 (只认为 i==i 是正样本，其他全是死对头)
+        labels = torch.arange(T_seq, device=zs.device).unsqueeze(0).expand(B, -1)
+
+        # 4. 交叉熵计算推斥力
+        loss = F.cross_entropy(sim.view(B * T_seq, T_seq), labels.flatten())
+
+        return loss
+
 
 @register_loss("smooth_freq_cosine")
 class SmoothFreqCosineProjectionLoss(ProjectionLoss):
