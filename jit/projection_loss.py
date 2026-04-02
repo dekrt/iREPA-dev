@@ -501,3 +501,143 @@ class FreqDirectCosineProjectionLoss(ProjectionLoss):
         loss = -cos_sim.mean()
 
         return loss
+
+
+@register_loss("saliency_cosine")
+class SaliencyWeightedCosine(ProjectionLoss):
+    def __init__(self, base_weight=0.1, saliency_scale=2.0, **kwargs):
+        """
+        base_weight: 背景的保底权重。不能设为0，否则背景就彻底不受约束变成纯噪点了。
+        saliency_scale: 显著前景的权重放大倍数。数值越大，模型越死磕复杂细节。
+        """
+        super().__init__()
+        self.base_weight = base_weight
+        self.saliency_scale = saliency_scale
+
+    def forward(self, zs, zs_tilde, zs_tilde_original=None, **kwargs):
+        self._check(zs, zs_tilde)
+
+        # 1. 特征 L2 归一化
+        zs_norm = F.normalize(zs, dim=-1)
+        zs_tilde_norm = F.normalize(zs_tilde, dim=-1)
+
+        # ==========================================
+        # 2. Teacher 计算显著性权重 (无需传导梯度)
+        # ==========================================
+        with torch.no_grad():
+            # A. 算整张图的“全局均值” (代表背景主色调) -> shape: [B, 1, D]
+            global_avg = zs_norm.mean(dim=1, keepdim=True)
+            global_avg = F.normalize(global_avg, dim=-1)
+
+            # B. 算每个 Patch 距离全局均值有多远 -> shape: [B, T]
+            # 相似度越低，说明长得越不像背景，越是突兀的前景！
+            sim_to_avg = (zs_norm * global_avg).sum(dim=-1)
+            saliency_dist = 1.0 - sim_to_avg
+
+            # C. 映射为 Loss 权重: 距离越远，权重越大
+            weights = self.base_weight + self.saliency_scale * saliency_dist
+
+        # ==========================================
+        # 3. Student 对齐并乘以权重
+        # ==========================================
+        # 算普通的 Point-wise Cosine Loss
+        patch_loss = - (zs_norm * zs_tilde_norm).sum(dim=-1) # shape: [B, T]
+
+        # 核心：给每个 Patch 的 Loss 乘上刚刚算出的显著性权重！
+        loss = (patch_loss * weights).mean()
+
+        return loss
+
+
+@register_loss("saliency_nce")
+class SaliencyWeightedNCE(ProjectionLoss):
+    def __init__(self, temperature=0.07, base_weight=0.1, saliency_scale=2.0, **kwargs):
+        super().__init__()
+        self.temperature = temperature
+        self.base_weight = base_weight
+        self.saliency_scale = saliency_scale
+
+    def forward(self, zs, zs_tilde, zs_tilde_original=None, **kwargs):
+        self._check(zs, zs_tilde)
+
+        zs_norm = F.normalize(zs, dim=-1)
+        zs_tilde_norm = F.normalize(zs_tilde, dim=-1)
+        B, T_seq, _ = zs.shape
+
+        # 1. 算显著性权重
+        with torch.no_grad():
+            global_avg = F.normalize(zs_norm.mean(dim=1, keepdim=True), dim=-1)
+            sim_to_avg = (zs_norm * global_avg).sum(dim=-1)
+            saliency_dist = 1.0 - sim_to_avg
+            weights = self.base_weight + self.saliency_scale * saliency_dist # [B, T]
+
+        # 2. 算 NCE Logits
+        sim = torch.bmm(zs_tilde_norm, zs_norm.transpose(1, 2)) / self.temperature
+        labels = torch.arange(T_seq, device=zs.device).unsqueeze(0).expand(B, -1)
+
+        # 3. 计算每个 Patch 独立的 NCE Loss (设 reduction='none' 阻止求平均)
+        loss_unreduced = F.cross_entropy(
+            sim.view(B * T_seq, T_seq),
+            labels.flatten(),
+            reduction='none'
+        ).view(B, T_seq)
+
+        # 4. 给 NCE Loss 乘上显著性权重
+        loss = (loss_unreduced * weights).mean()
+
+        return loss
+
+
+@register_loss("confidence_cosine")
+class ConfidenceFilteredCosine(ProjectionLoss):
+    def __init__(self, keep_ratio=0.7, **kwargs):
+        """
+        keep_ratio: 保留信心值最高的 Top-K 比例的 Patch。
+                    0.7 表示无情扔掉最不确定的那 30% 区域（如阴影、模糊暗部）。
+        """
+        super().__init__()
+        self.keep_ratio = keep_ratio
+
+    def forward(self, zs, zs_tilde, zs_tilde_original=None, **kwargs):
+        self._check(zs, zs_tilde)
+
+        B, T_seq, D = zs.shape
+
+        # ==========================================
+        # 1. Teacher 信心评估与硬截断 (Hard Filtering)
+        # ==========================================
+        with torch.no_grad():
+            # 【致命细节】：必须用 *还没有* F.normalize 的原始 zs 来算 Norm！
+            # 特征向量的长度 (Norm) 代表了 DINO 对这块区域语义的“笃定程度”
+            confidence = torch.norm(zs, p=2, dim=-1)  # shape: [B, T_seq]
+
+            # 计算需要保留的 Patch 数量 K
+            k = int(T_seq * self.keep_ratio)
+            k = max(1, min(k, T_seq)) # 兜底保护，防止把所有 Patch 全扔了
+
+            # 找出每张图里 Confidence 最高的 Top-K 个 Patch 的索引
+            _, topk_indices = torch.topk(confidence, k, dim=-1)
+
+            # 构造 0/1 Mask，只给有底气的 Patch 发“通行证”
+            mask = torch.zeros_like(confidence)
+            mask.scatter_(dim=-1, index=topk_indices, value=1.0) # shape: [B, T_seq]
+
+        # ==========================================
+        # 2. 特征归一化 (算 Cosine 必须映射回单位超球面)
+        # ==========================================
+        zs_norm = F.normalize(zs, dim=-1)
+        zs_tilde_norm = F.normalize(zs_tilde, dim=-1)
+
+        # ==========================================
+        # 3. Student 对齐 (仅限存活的 Patch)
+        # ==========================================
+        # 算普通的 Point-wise Cosine Loss
+        patch_loss = - (zs_norm * zs_tilde_norm).sum(dim=-1) # shape: [B, T_seq]
+
+        # 应用 Mask：直接抹除被淘汰的 30% 的梯度，让它们不产生任何惩罚
+        masked_loss = patch_loss * mask
+
+        # 【严谨求均值】：不能除以总数 T_seq，必须只除以有效存活的 Patch 数量 K
+        loss = masked_loss.sum(dim=-1) / k
+
+        return loss.mean()
