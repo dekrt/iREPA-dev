@@ -68,7 +68,7 @@ class Denoiser(nn.Module):
         z = torch.randn(n, device=device) * self.P_std + self.P_mean
         return torch.sigmoid(z)
 
-    def forward(self, x, labels, zs):
+    def forward(self, x, labels, zs, cls_tokens=None):
         labels_dropped = self.drop_labels(labels) if self.training else labels
 
         t = self.sample_t(x.size(0), device=x.device).view(-1, *([1] * (x.ndim - 1)))
@@ -95,12 +95,16 @@ class Denoiser(nn.Module):
             for proj_loss_name, proj_loss_fn, coeff in zip(self.projection_loss_type, self.projection_loss, self.proj_coeff):
                 proj_loss = torch.tensor(0.0, device=x.device, dtype=x.dtype)
                 if len(zs) > 0 and len(zs_tilde) > 0:
+                    if cls_tokens is None:
+                        cls_tokens_list = [None] * len(zs)
+                    else:
+                        cls_tokens_list = cls_tokens
+
                     # loop across different encoders
-                    for z, z_tilde, z_tilde_original in zip(zs, zs_tilde, zs_tilde_original):
-                        # zs_tilde_original will be only used for gram-matrix loss, so its shape doesn't matter
+                    for z, z_tilde, z_tilde_orig, cls_tok in zip(zs, zs_tilde, zs_tilde_original, cls_tokens_list):                        # zs_tilde_original will be only used for gram-matrix loss, so its shape doesn't matter
                         assert z.shape == z_tilde.shape, f"Shape mismatch: {z.shape=} vs {z_tilde.shape=}"
                         # NOTE: We pass vision_feats, projected_sit_feats, and unprojected_sit_feats, but the last one might not be used
-                        proj_loss = proj_loss + proj_loss_fn(z, z_tilde, z_tilde_original=z_tilde_original)
+                        proj_loss = proj_loss + proj_loss_fn(z, z_tilde, zs_tilde_original=z_tilde_orig, cls_token=cls_tok)
                     proj_loss /= len(zs)
 
                 loss_dict[proj_loss_name] = proj_loss.detach().item()

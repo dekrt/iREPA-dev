@@ -641,3 +641,109 @@ class ConfidenceFilteredCosine(ProjectionLoss):
         loss = masked_loss.sum(dim=-1) / k
 
         return loss.mean()
+
+
+@register_loss("info_entropy_cosine")
+class InfoEntropyCosine(ProjectionLoss):
+    def __init__(self, sim_threshold=0.9, **kwargs):
+        """
+        sim_threshold: 判定两个 Token "长得一样" 的相似度门槛。
+        """
+        super().__init__()
+        self.sim_threshold = sim_threshold
+
+    def forward(self, zs, zs_tilde, zs_tilde_original=None, **kwargs):
+        self._check(zs, zs_tilde)
+
+        zs_norm = F.normalize(zs, dim=-1)
+        zs_tilde_norm = F.normalize(zs_tilde, dim=-1)
+        B, T_seq, D = zs.shape
+
+        # =========================================================
+        # 核心：统计每个 Token 的 "出现频率" (Redundancy Counting)
+        # =========================================================
+        with torch.no_grad():
+            # 1. 算 Teacher 所有 Patch 之间的两两相似度 [B, T, T]
+            sim_matrix = torch.bmm(zs_norm, zs_norm.transpose(1, 2))
+
+            # 2. 统计频率：找出相似度大于 0.9 的 "同类" 数量
+            # 比如某个蓝天 Patch，可能有 100 个 Patch 跟它相似度 > 0.9
+            # 那么它的 freq 就是 100
+            is_similar = (sim_matrix > self.sim_threshold).float()
+            freq = is_similar.sum(dim=-1) # shape: [B, T]
+
+            # 3. 按照你的想法："频率越高的，权重越低" -> 逆频率加权
+            # 如果 freq = 100，weight = 1/100 = 0.01
+            # 如果 freq = 1 (只有它自己，极度罕见的特征)，weight = 1/1 = 1.0
+            weights = 1.0 / freq  # shape: [B, T]
+
+        # =========================================================
+        # 对齐阶段：计算 Cosine Loss 并乘上你的 "信息熵权重"
+        # =========================================================
+        # 基础的逐 Patch Cosine
+        patch_loss = - (zs_norm * zs_tilde_norm).sum(dim=-1)
+
+        # 施加魔法：高频特征权重被无限压缩，低频特征权重凸显
+        loss = (patch_loss * weights).sum(dim=-1).mean()
+
+        return loss
+
+
+@register_loss("global_anchor_cosine")
+class GlobalAnchorCosine(ProjectionLoss):
+    def __init__(self, base_weight=0.1, saliency_scale=2.0, **kwargs):
+        """
+        base_weight: 背景/冗余特征的保底权重。给一个很小的值 (如 0.1) 即可，防止背景彻底崩坏。
+        saliency_scale: 远离全局锚点的前景特征的放大倍数。
+        """
+        super().__init__()
+        self.base_weight = base_weight
+        self.saliency_scale = saliency_scale
+
+    def forward(self, zs, zs_tilde, zs_tilde_original=None, **kwargs):
+        self._check(zs, zs_tilde)
+
+        # 1. 基础 L2 归一化
+        zs_norm = F.normalize(zs, dim=-1)
+        zs_tilde_norm = F.normalize(zs_tilde, dim=-1)
+
+        # =========================================================
+        # 2. 寻找“全局锚点 (Global Anchor)”
+        # =========================================================
+        with torch.no_grad():
+            # 尝试从 kwargs 中获取 DINO 的 [CLS] Token
+            # 注意：这需要在你的 engine_jit.py 里把 DINO 的 cls_token 传给 loss_fn
+            cls_token = kwargs.get('cls_token', None)
+
+            if cls_token is not None:
+                # 方法 A：使用 DINO 官方的 Global 特征 ([CLS] Token)
+                # 确保维度匹配 [B, 1, D]
+                if cls_token.dim() == 2:
+                    cls_token = cls_token.unsqueeze(1)
+                global_anchor = F.normalize(cls_token, dim=-1)
+            else:
+                # 方法 B：如果没有传 [CLS]，自动回退到你提议的 Average Pooling
+                global_anchor = F.normalize(zs_norm.mean(dim=1, keepdim=True), dim=-1)
+
+            # =========================================================
+            # 3. 计算显著性距离并分配权重
+            # =========================================================
+            # 计算每个 Patch 与全局锚点的相似度 [B, T]
+            sim_to_global = (zs_norm * global_anchor).sum(dim=-1)
+
+            # 距离 = 1 - 相似度。越不像全局背景，距离越大，说明越是代表性特征！
+            saliency_dist = 1.0 - sim_to_global
+
+            # 映射为对齐权重
+            weights = self.base_weight + self.saliency_scale * saliency_dist # [B, T]
+
+        # =========================================================
+        # 4. 执行加权对齐
+        # =========================================================
+        # 计算基础的 Cosine Loss (逐 Patch)
+        patch_loss = - (zs_norm * zs_tilde_norm).sum(dim=-1)
+
+        # 乘以显著性权重，算力向代表性 Token 倾斜
+        loss = (patch_loss * weights).mean()
+
+        return loss

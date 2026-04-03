@@ -48,6 +48,7 @@ def train_one_epoch(
         # Prepare zs for projection loss
         with torch.no_grad():
             zs = []
+            cls_tokens = []
             with torch.amp.autocast('cuda', dtype=torch.bfloat16):
                 for encoder in encoders:
                     # Preprocess the image using encoder's built-in method
@@ -70,6 +71,7 @@ def train_one_epoch(
 
                     # append to list
                     zs.append(z)
+                    cls_tokens.append(features['x_norm_clstoken'])
 
         # normalize image to [-1, 1]
         x = x.to(device, non_blocking=True).to(torch.float32).div_(255)
@@ -77,7 +79,7 @@ def train_one_epoch(
         labels = labels.to(device, non_blocking=True)
 
         with torch.amp.autocast('cuda', dtype=torch.bfloat16):
-            loss, loss_dict = model(x, labels, zs)
+            loss, loss_dict = model(x, labels, zs, cls_tokens=cls_tokens)
 
         loss_value = loss.item()
         if not math.isfinite(loss_value):
