@@ -93,6 +93,14 @@ def get_args_parser():
                         help='Frequency (in epochs) for evaluation')
     parser.add_argument('--online_eval', action='store_true')
     parser.add_argument('--evaluate_gen', action='store_true')
+    parser.add_argument('--eval_patch_metrics', action='store_true',
+                        help='Compute patch-dispersion and uniform-loss metrics during --evaluate_gen')
+    parser.add_argument('--eval_metric_encoder', type=str, default=None,
+                        help='Encoder used for eval patch metrics; defaults to --enc_type')
+    parser.add_argument('--eval_uniform_t', type=float, default=2.0,
+                        help='Temperature used by uniform loss: log(E[exp(-t * ||zi-zj||^2)])')
+    parser.add_argument('--eval_uniform_max_tokens', type=int, default=8192,
+                        help='Max number of tokens sampled per batch for uniform loss')
     parser.add_argument('--save_interval', type=int, default=20,
                         help='Frequency (in epochs) to save checkpoints')
     parser.add_argument('--sample_grid', action='store_true')

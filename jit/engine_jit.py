@@ -5,6 +5,7 @@ import shutil
 
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
 import numpy as np
 import cv2
 import wandb
@@ -14,6 +15,25 @@ import util.lr_sched as lr_sched
 import torch_fidelity
 import copy
 from torchvision.utils import make_grid
+
+
+def _patch_dispersion_score(patch_tokens, eps=1e-8):
+    """RMS token contrast on normalized patch tokens, returned per image."""
+    x = F.normalize(patch_tokens.to(torch.float32), dim=-1, eps=eps)
+    x_centered = x - x.mean(dim=1, keepdim=True)
+    return x_centered.square().sum(dim=-1).mean(dim=1).sqrt()
+
+
+def _uniform_loss_score(patch_tokens, t=2.0, max_tokens=8192, eps=1e-12):
+    """Wang-Isola style uniformity loss on normalized tokens."""
+    z = F.normalize(patch_tokens.to(torch.float32).reshape(-1, patch_tokens.shape[-1]), dim=-1)
+    if max_tokens is not None and max_tokens > 0 and z.size(0) > max_tokens:
+        idx = torch.randperm(z.size(0), device=z.device)[:max_tokens]
+        z = z[idx]
+    if z.size(0) < 2:
+        return torch.tensor(float('nan'), device=patch_tokens.device, dtype=torch.float32)
+    dist2 = torch.pdist(z, p=2).square()
+    return torch.log(torch.exp(-t * dist2).mean().clamp_min(eps))
 
 
 def train_one_epoch(
@@ -148,6 +168,20 @@ def evaluate(model_without_ddp, args, epoch, batch_size=64, log_writer=None):
     local_rank = misc.get_rank()
     num_steps = args.num_images // (batch_size * world_size) + 1
 
+    eval_encoder = None
+    patch_disp_sum = torch.zeros(1, device='cuda', dtype=torch.float64)
+    patch_disp_count = torch.zeros(1, device='cuda', dtype=torch.float64)
+    uniform_sum = torch.zeros(1, device='cuda', dtype=torch.float64)
+    uniform_count = torch.zeros(1, device='cuda', dtype=torch.float64)
+
+    if getattr(args, 'eval_patch_metrics', False):
+        from vision_encoder import load_encoders
+        metric_encoder_name = args.eval_metric_encoder or args.enc_type
+        eval_encoders = load_encoders(metric_encoder_name, device=torch.device(args.device), resolution=args.img_size)
+        eval_encoder = eval_encoders[0]
+        if misc.is_main_process() and len(eval_encoders) > 1:
+            print(f"[Eval metrics] Multiple encoders provided ({metric_encoder_name}); use first one only.")
+
     # Construct the folder name for saving generated images.
     save_folder = os.path.join(
         args.tmp_gen_path,
@@ -187,6 +221,26 @@ def evaluate(model_without_ddp, args, epoch, batch_size=64, log_writer=None):
         with torch.amp.autocast('cuda', dtype=torch.bfloat16):
             sampled_images = model_without_ddp.generate(labels_gen)
 
+        if eval_encoder is not None:
+            global_start = world_size * batch_size * i + local_rank * batch_size
+            local_valid = max(0, min(batch_size, args.num_images - global_start))
+            if local_valid > 0:
+                metric_images = ((sampled_images[:local_valid] + 1.0) * 127.5).clamp(0, 255)
+                metric_features = eval_encoder.forward_features(eval_encoder.preprocess(metric_images))
+                patch_tokens = metric_features.get('x_norm_patchtokens')
+                if patch_tokens is not None and patch_tokens.ndim == 3:
+                    disp_per_image = _patch_dispersion_score(patch_tokens)
+                    uniform_value = _uniform_loss_score(
+                        patch_tokens,
+                        t=args.eval_uniform_t,
+                        max_tokens=args.eval_uniform_max_tokens,
+                    )
+                    patch_disp_sum += disp_per_image.sum().to(torch.float64)
+                    patch_disp_count += torch.tensor(float(local_valid), device='cuda', dtype=torch.float64)
+                    if torch.isfinite(uniform_value):
+                        uniform_sum += (uniform_value * local_valid).to(torch.float64)
+                        uniform_count += torch.tensor(float(local_valid), device='cuda', dtype=torch.float64)
+
         torch.distributed.barrier()
 
         # denormalize images
@@ -207,6 +261,27 @@ def evaluate(model_without_ddp, args, epoch, batch_size=64, log_writer=None):
     # back to no ema
     print("Switch back from ema")
     model_without_ddp.load_state_dict(model_state_dict)
+
+    if eval_encoder is not None:
+        dist.all_reduce(patch_disp_sum, op=dist.ReduceOp.SUM)
+        dist.all_reduce(patch_disp_count, op=dist.ReduceOp.SUM)
+        dist.all_reduce(uniform_sum, op=dist.ReduceOp.SUM)
+        dist.all_reduce(uniform_count, op=dist.ReduceOp.SUM)
+
+        patch_dispersion = (patch_disp_sum / patch_disp_count.clamp_min(1.0)).item()
+        uniform_loss = (uniform_sum / uniform_count.clamp_min(1.0)).item()
+
+        if misc.is_main_process():
+            print(f"Patch dispersion: {patch_dispersion:.6f}, Uniform loss: {uniform_loss:.6f}")
+
+        if log_writer is not None:
+            log_writer.add_scalar('eval/patch_dispersion', patch_dispersion, epoch)
+            log_writer.add_scalar('eval/uniform_loss', uniform_loss, epoch)
+        if misc.is_main_process() and wandb.run is not None:
+            wandb.log({
+                'eval/patch_dispersion': patch_dispersion,
+                'eval/uniform_loss': uniform_loss,
+            }, step=epoch * 1000)
 
     # compute FID and IS
     if log_writer is not None:
